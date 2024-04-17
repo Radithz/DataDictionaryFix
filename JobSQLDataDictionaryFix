@@ -1,0 +1,83 @@
+static void FixDataDictionary(Args _args)
+{
+
+SysDictTable dictTable;
+DictField dictField;
+TableId tableId;
+FieldId fieldId;
+SqlDictionary sqlDictionaryTable;
+SqlDictionary sqlDictionaryField;
+    dictionary dictionary = new dictionary();
+
+
+setPrefix("Update of data dictionary IDs");
+tableId = dictionary.tableNext(0);
+ttsbegin;
+
+while (tableId)
+{
+    dictTable = new SysDictTable(tableId);
+    setPrefix(dictTable.name());
+
+    if (!dictTable.isSystemTable())
+    {
+        //Finds table in SqlDictionary by name in AOT, if ID was changed.
+        //Empty field ID represents a table.
+        select sqlDictionaryTable
+            where sqlDictionaryTable.name == dictTable.name()
+            && sqlDictionaryTable.fieldId == 0
+            && sqlDictionaryTable.tabId != dictTable.id();
+
+        if (sqlDictionaryTable)
+        {
+            //Updates table ID in SqlDictionary
+            if (ReleaseUpdateDB::changeTableId(
+                sqlDictionaryTable.tabId,
+                dictTable.id(),
+                dictTable.name()))
+            {
+                info(strFmt("Table ID changed (%1 -> %2)", sqlDictionaryTable.tabId, dictTable.id()));
+            }
+        }
+
+        fieldId = dictTable.fieldNext(0);
+
+        //For all fields in table
+        while (fieldId)
+        {
+            dictField = dictTable.fieldObject(fieldId);
+
+            if (dictField.isSql() && !dictField.isSystem())
+            {
+                //Finds fields in SqlDictionary by name and compares IDs
+                select sqlDictionaryField
+                    where sqlDictionaryField.tabId == dictTable.id()
+                    && sqlDictionaryField.name == dictField.name()
+                    && sqlDictionaryField.fieldId != 0
+                    && sqlDictionaryField.fieldId != dictField.id();
+
+                if (sqlDictionaryField)
+                {
+                    //Updates field ID in SqlDictionary
+                    if (ReleaseUpdateDB::changeFieldId(
+                        dictTable.id(),
+                        sqlDictionaryField.fieldId,
+                        dictField.id(),
+                        dictTable.name(),
+                        dictField.name()))
+                    {
+                        info(strFmt("Field %1 - ID changed (%2 -> %3)",
+                            dictField.name(),
+                            sqlDictionaryField.fieldId,
+                            dictField.id()));
+                    }
+                }
+            }
+            fieldId = dictTable.fieldNext(fieldId);
+        }
+    }
+    tableId = dictionary.tableNext(tableId);
+}
+ttscommit;
+
+}
